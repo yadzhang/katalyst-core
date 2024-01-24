@@ -26,7 +26,7 @@ import (
 	"github.com/kubewharf/katalyst-core/pkg/util/machine"
 )
 
-func MigratePagesForContainer(ctx context.Context, podUID, containerId string,
-	numasCount int, sourceNUMAs, destNUMAs machine.CPUSet) error {
-	return fmt.Errorf("unsupported MigratePagesForContainer")
+func MovePagesForContainer(ctx context.Context, podUID, containerId string,
+	sourceNUMAs, destNUMAs machine.CPUSet) error {
+	return fmt.Errorf("unsupported MovePagesForContainer")
 }
