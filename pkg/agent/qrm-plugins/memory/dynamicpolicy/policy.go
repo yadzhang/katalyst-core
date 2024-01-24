@@ -61,6 +61,7 @@ const (
 	memoryPluginAsyncWorkersName          = "qrm_memory_plugin_async_workers"
 	memoryPluginAsyncWorkTopicDropCache   = "qrm_memory_plugin_drop_cache"
 	memoryPluginAsyncWorkTopicMigratePage = "qrm_memory_plugin_migrate_page"
+	memoryPluginAsyncWorkTopicMovePage    = "qrm_memory_plugin_move_page"
 
 	dropCacheTimeoutSeconds = 30
 )
