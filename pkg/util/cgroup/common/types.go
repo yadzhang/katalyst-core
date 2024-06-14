@@ -58,7 +58,13 @@ const (
 type MemoryData struct {
 	LimitInBytes       int64
 	TCPMemLimitInBytes int64
-	WmarkRatio         int32
+	// SoftLimitInBytes for memory.low
+	// Best effort memory protection, cgroup memory that will not be reclaimed in soft_limit_reclaim phase of kswapd.
+	SoftLimitInBytes int64
+	// MinInBytes for memory.min
+	// cgroup memory that can never be reclaimed by kswapd.
+	MinInBytes int64
+	WmarkRatio int32
 }
 
 // CPUData set cgroup cpu data
@@ -170,6 +176,12 @@ type MemoryMetrics struct {
 	// memory.memsw.usage_in_bytes Reports the total size in
 	// bytes of the memory and swap space used by tasks in the cgroup.
 	MemSWUsage uint64
+}
+
+// MemoryNumaMetrics get per-numa level memory cgroup metrics
+type MemoryNumaMetrics struct {
+	Anon uint64
+	File uint64
 }
 
 // PidMetrics get pid cgroup metrics

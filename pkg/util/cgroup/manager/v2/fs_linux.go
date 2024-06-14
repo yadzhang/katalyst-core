@@ -32,10 +32,9 @@ import (
 	"strings"
 
 	cgroupsv2 "github.com/containerd/cgroups/v2"
+	libcgroups "github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/cgroups/fscommon"
 	"k8s.io/klog/v2"
-
-	libcgroups "github.com/opencontainers/runc/libcontainer/cgroups"
 
 	"github.com/kubewharf/katalyst-core/pkg/util/cgroup/common"
 	"github.com/kubewharf/katalyst-core/pkg/util/general"
@@ -54,6 +53,22 @@ func (m *manager) ApplyMemory(absCgroupPath string, data *common.MemoryData) err
 			return err
 		} else if applied {
 			klog.Infof("[CgroupV2] apply memory max successfully, cgroupPath: %s, data: %v, old data: %v\n", absCgroupPath, data.LimitInBytes, oldData)
+		}
+	}
+
+	if data.SoftLimitInBytes > 0 {
+		if err, applied, oldData := common.WriteFileIfChange(absCgroupPath, "memory.low", numToStr(data.SoftLimitInBytes)); err != nil {
+			return err
+		} else if applied {
+			klog.Infof("[CgroupV2] apply memory low successfully, cgroupPath: %s, data: %v, old data: %v\n", absCgroupPath, data.SoftLimitInBytes, oldData)
+		}
+	}
+
+	if data.MinInBytes > 0 {
+		if err, applied, oldData := common.WriteFileIfChange(absCgroupPath, "memory.min", numToStr(data.MinInBytes)); err != nil {
+			return err
+		} else if applied {
+			klog.Infof("[CgroupV2] apply memory min successfully, cgroupPath: %s, data: %v, old data: %v\n", absCgroupPath, data.MinInBytes, oldData)
 		}
 	}
 
@@ -249,6 +264,45 @@ func (m *manager) GetMemory(absCgroupPath string) (*common.MemoryStats, error) {
 	memoryStats.Usage = usage
 
 	return memoryStats, nil
+}
+
+func (m *manager) GetNumaMemory(absCgroupPath string) (map[int]*common.MemoryNumaMetrics, error) {
+	numaStat, err := common.ParseCgroupNumaValue(absCgroupPath, "memory.numa_stat")
+	general.Infof("get cgroup %+v numa stat %+v", absCgroupPath, numaStat)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[int]*common.MemoryNumaMetrics)
+	if anonStat, ok := numaStat["anon"]; ok {
+		for numaID, value := range anonStat {
+			if _, ok := result[numaID]; !ok {
+				result[numaID] = &common.MemoryNumaMetrics{
+					Anon: value,
+				}
+			} else {
+				result[numaID].Anon = value
+			}
+		}
+	} else {
+		general.Warningf("no anon in numa stat,cgroup path:%v", absCgroupPath)
+	}
+
+	if fileStat, ok := numaStat["file"]; ok {
+		for numaID, value := range fileStat {
+			if _, ok := result[numaID]; !ok {
+				result[numaID] = &common.MemoryNumaMetrics{
+					File: value,
+				}
+			} else {
+				result[numaID].File = value
+			}
+		}
+	} else {
+		general.Warningf("no file in numa stat,cgroup path:%v", absCgroupPath)
+	}
+
+	return result, nil
 }
 
 func (m *manager) GetCPUSet(absCgroupPath string) (*common.CPUSetStats, error) {

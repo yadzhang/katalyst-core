@@ -57,10 +57,10 @@ import (
 const (
 	MemoryResourcePluginPolicyNameDynamic = string(apiconsts.ResourcePluginPolicyNameDynamic)
 
-	memoryPluginStateFileName             = "memory_plugin_state"
-	memoryPluginAsyncWorkersName          = "qrm_memory_plugin_async_workers"
-	memoryPluginAsyncWorkTopicDropCache   = "qrm_memory_plugin_drop_cache"
-	memoryPluginAsyncWorkTopicMigratePage = "qrm_memory_plugin_migrate_page"
+	memoryPluginStateFileName           = "memory_plugin_state"
+	memoryPluginAsyncWorkersName        = "qrm_memory_plugin_async_workers"
+	memoryPluginAsyncWorkTopicDropCache = "qrm_memory_plugin_drop_cache"
+	memoryPluginAsyncWorkTopicMovePage  = "qrm_memory_plugin_move_page"
 
 	dropCacheTimeoutSeconds = 30
 )
@@ -230,6 +230,8 @@ func NewDynamicPolicy(agentCtx *agent.GenericContext, conf *config.Configuration
 		memoryadvisor.ControlKnobHandlerWithChecker(policyImplement.handleAdvisorDropCache))
 	memoryadvisor.RegisterControlKnobHandler(memoryadvisor.ControlKnobReclaimedMemorySize,
 		memoryadvisor.ControlKnobHandlerWithChecker(policyImplement.handleAdvisorMemoryProvisions))
+	memoryadvisor.RegisterControlKnobHandler(memoryadvisor.ControlKnobKeyBalanceNumaMemory,
+		memoryadvisor.ControlKnobHandlerWithChecker(policyImplement.handleNumaMemoryBalance))
 
 	return true, &agent.PluginWrapper{GenericPlugin: pluginWrapper}, nil
 }
@@ -262,6 +264,10 @@ func (p *DynamicPolicy) Start() (err error) {
 	go wait.Until(p.checkMemorySet, memsetCheckPeriod, p.stopCh)
 	go wait.Until(p.applyExternalCgroupParams, applyCgroupPeriod, p.stopCh)
 	go wait.Until(p.setExtraControlKnobByConfigs, setExtraControlKnobsPeriod, p.stopCh)
+	err = p.asyncWorkers.Start(p.stopCh)
+	if err != nil {
+		general.Errorf("start async worker failed, err: %v", err)
+	}
 
 	if p.enableSettingMemoryMigrate {
 		general.Infof("setMemoryMigrate enabled")
@@ -399,7 +405,7 @@ func (p *DynamicPolicy) GetTopologyHints(ctx context.Context,
 		return nil, err
 	}
 
-	reqInt, err := util.GetQuantityFromResourceReq(req)
+	reqInt, _, err := util.GetQuantityFromResourceReq(req)
 	if err != nil {
 		return nil, fmt.Errorf("getReqQuantityFromResourceReq failed with error: %v", err)
 	}
@@ -658,7 +664,7 @@ func (p *DynamicPolicy) Allocate(ctx context.Context,
 		return nil, err
 	}
 
-	reqInt, err := util.GetQuantityFromResourceReq(req)
+	reqInt, _, err := util.GetQuantityFromResourceReq(req)
 	if err != nil {
 		return nil, fmt.Errorf("getReqQuantityFromResourceReq failed with error: %v", err)
 	}

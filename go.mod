@@ -12,7 +12,8 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/protobuf v1.5.2
 	github.com/google/cadvisor v0.44.2
-	github.com/kubewharf/katalyst-api v0.4.1-0.20240118125832-edab146c0c0c
+	github.com/klauspost/cpuid/v2 v2.2.6
+	github.com/kubewharf/katalyst-api v0.4.1-0.20240222122824-be538f641f58
 	github.com/montanaflynn/stats v0.7.1
 	github.com/opencontainers/runc v1.1.6
 	github.com/opencontainers/selinux v1.10.0
@@ -36,6 +37,7 @@ require (
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8
 	gonum.org/v1/gonum v0.6.2
 	google.golang.org/grpc v1.51.0
+	gotest.tools/v3 v3.0.3
 	k8s.io/api v0.24.16
 	k8s.io/apimachinery v0.24.16
 	k8s.io/apiserver v0.24.16

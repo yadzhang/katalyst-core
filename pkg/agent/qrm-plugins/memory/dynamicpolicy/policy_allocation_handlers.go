@@ -76,7 +76,7 @@ func (p *DynamicPolicy) dedicatedCoresWithNUMABindingAllocationHandler(ctx conte
 		return p.dedicatedCoresWithNUMABindingAllocationSidecarHandler(ctx, req)
 	}
 
-	reqInt, err := util.GetQuantityFromResourceReq(req)
+	reqInt, _, err := util.GetQuantityFromResourceReq(req)
 	if err != nil {
 		return nil, fmt.Errorf("GetQuantityFromResourceReq failed with error: %v", err)
 	}
@@ -445,15 +445,15 @@ func (p *DynamicPolicy) adjustAllocationEntries() error {
 
 			if !numaWithoutNUMABindingPods.IsEmpty() {
 				migratePagesWorkName := util.GetContainerAsyncWorkName(podUID, containerName,
-					memoryPluginAsyncWorkTopicMigratePage)
+					memoryPluginAsyncWorkTopicMovePage)
 				// start a asynchronous work to migrate pages for containers whose numaset changed and doesn't require numa_binding
 				err = p.asyncWorkers.AddWork(migratePagesWorkName,
 					&asyncworker.Work{
-						Fn: MigratePagesForContainer,
+						Fn: MovePagesForContainer,
 						Params: []interface{}{podUID, containerID,
-							p.topology.NumNUMANodes, p.topology.CPUDetails.NUMANodes(),
+							p.topology.CPUDetails.NUMANodes(),
 							numaWithoutNUMABindingPods.Clone()},
-						DeliveredAt: time.Now()})
+						DeliveredAt: time.Now()}, asyncworker.DuplicateWorkPolicyOverride)
 
 				if err != nil {
 					general.Errorf("add work: %s pod: %s container: %s failed with error: %v", migratePagesWorkName, podUID, containerName, err)
@@ -476,7 +476,7 @@ func (p *DynamicPolicy) adjustAllocationEntries() error {
 				&asyncworker.Work{
 					Fn:          cgroupmgr.DropCacheWithTimeoutForContainer,
 					Params:      []interface{}{podUID, containerID, dropCacheTimeoutSeconds, memoryLimitBytes},
-					DeliveredAt: time.Now()})
+					DeliveredAt: time.Now()}, asyncworker.DuplicateWorkPolicyOverride)
 
 			if err != nil {
 				general.Errorf("add work: %s pod: %s container: %s failed with error: %v", dropCacheWorkName, podUID, containerName, err)
@@ -501,7 +501,7 @@ func (p *DynamicPolicy) calculateMemoryAllocation(req *pluginapi.ResourceRequest
 		return fmt.Errorf("NUMA not exclusive binding container has request larger than 1 NUMA")
 	}
 
-	memoryReq, err := util.GetQuantityFromResourceReq(req)
+	memoryReq, _, err := util.GetQuantityFromResourceReq(req)
 
 	if err != nil {
 		return fmt.Errorf("GetQuantityFromResourceReq failed with error: %v", err)
