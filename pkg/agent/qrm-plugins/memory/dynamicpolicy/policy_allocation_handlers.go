@@ -19,6 +19,7 @@ package dynamicpolicy
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -481,6 +482,11 @@ func (p *DynamicPolicy) adjustAllocationEntries() error {
 				if err != nil {
 					general.Errorf("add work: %s pod: %s container: %s failed with error: %v", movePagesWorkName, podUID, containerName, err)
 				}
+			}
+
+			// not dropcache for bmq pods
+			if strings.Contains(container.Image, "/bmq/mq_proxy") || strings.Contains(container.Image, "/bmq/mq_broker") {
+				continue
 			}
 
 			dropCacheWorkName := util.GetContainerAsyncWorkName(podUID, containerName,
