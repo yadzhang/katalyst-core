@@ -901,17 +901,19 @@ func (p *DynamicPolicy) handleAdvisorMemoryOffloading(_ *config.Configuration,
 		return fmt.Errorf("GetEffectiveCPUSetWithAbsolutePath failed with error: %v", err)
 	}
 
-	// start a asynchronous work to execute memory offloading
-	err = p.defaultAsyncLimitedWorkers.AddWork(
-		&asyncworker.Work{
-			Name:        memoryOffloadingWorkName,
-			UID:         uuid.NewUUID(),
-			Fn:          cgroupmgr.MemoryOffloadingWithAbsolutePath,
-			Params:      []interface{}{absCGPath, memoryOffloadingSizeInBytesInt64, mems},
-			DeliveredAt: time.Now(),
-		}, asyncworker.DuplicateWorkPolicyOverride)
-	if err != nil {
-		return fmt.Errorf("add work: %s pod: %s container: %s cgroup: %s failed with error: %v", memoryOffloadingWorkName, entryName, subEntryName, absCGPath, err)
+	if memoryOffloadingSizeInBytesInt64 > 0 {
+		// start a asynchronous work to execute memory offloading
+		err = p.defaultAsyncLimitedWorkers.AddWork(
+			&asyncworker.Work{
+				Name:        memoryOffloadingWorkName,
+				UID:         uuid.NewUUID(),
+				Fn:          cgroupmgr.MemoryOffloadingWithAbsolutePath,
+				Params:      []interface{}{absCGPath, memoryOffloadingSizeInBytesInt64, mems},
+				DeliveredAt: time.Now(),
+			}, asyncworker.DuplicateWorkPolicyOverride)
+		if err != nil {
+			return fmt.Errorf("add work: %s pod: %s container: %s cgroup: %s failed with error: %v", memoryOffloadingWorkName, entryName, subEntryName, absCGPath, err)
+		}
 	}
 
 	_ = emitter.StoreInt64(util.MetricNameMemoryHandlerAdvisorMemoryOffload, memoryOffloadingSizeInBytesInt64,

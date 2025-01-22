@@ -601,7 +601,7 @@ func (tmo *transparentMemoryOffloading) GetAdvices() types.InternalMemoryCalcula
 	tmo.mutex.RLock()
 	defer tmo.mutex.RUnlock()
 	for _, tmoEngine := range tmo.containerTmoEngines {
-		if tmoEngine.GetOffloadingTargetSize() <= 0 {
+		if tmoEngine.GetOffloadingTargetSize() < 0 {
 			continue
 		}
 		enableSwap := consts.ControlKnobOFF
