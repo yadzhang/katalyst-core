@@ -50,14 +50,14 @@ const (
 	// GetNumaForPagesMaxEachTime get numa for 16384 pages(64MB) at most at a time
 	GetNumaForPagesMaxEachTime = 16384
 
-	// MovePagesMaxEachTime means move 1280 pages(5MB) at most at a time
-	MovePagesMaxEachTime = 1280
+	// MovePagesMaxEachTime means move 256 pages(1MB) at most at a time
+	MovePagesMaxEachTime = 256
 
 	// MovePagesMinEachTime means move 64 pages(256 KB) at least at a time
 	MovePagesMinEachTime = 64
 
-	// MovePagesAcceptableTimeCost is acceptable time cost of each move pages is 20ms
-	MovePagesAcceptableTimeCost = 20
+	// MovePagesAcceptableTimeCost is acceptable time cost of each move pages is 10ms
+	MovePagesAcceptableTimeCost = 10
 
 	SystemNodeDir = "/sys/devices/system/node/"
 	ProcDir       = "/proc"
@@ -79,7 +79,7 @@ type smapsInfo struct {
 // MigratePagesForContainer uses SYS_MIGRATE_PAGES syscall to migrate container process memory from
 // sourceNUMAs to destNUMAs, and it may block process when migration. It is deprecated will be
 // removed in a future release.
-func MigratePagesForContainer(ctx context.Context, podUID, containerId string,
+func MigratePagesForContainer(ctx context.Context, podUID, containerId string, moveIntervalMs int,
 	numasCount int, sourceNUMAs, destNUMAs machine.CPUSet,
 ) error {
 	memoryAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysMemory, podUID, containerId)
@@ -138,6 +138,8 @@ containerLoop:
 			break containerLoop
 		default:
 		}
+
+		time.Sleep(time.Duration(moveIntervalMs) * time.Millisecond)
 	}
 
 	_ = eventbus.GetDefaultEventBus().Publish(consts.TopicNameSyscall, eventbus.SyscallEvent{
@@ -163,7 +165,7 @@ containerLoop:
 
 // MovePagesForContainer uses SYS_MOVE_PAGES syscall to migrate container process memory from
 // sourceNUMAs to destNUMAs, which has more fine-grained locks than migrate_page.
-func MovePagesForContainer(ctx context.Context, podUID, containerId string,
+func MovePagesForContainer(ctx context.Context, podUID, containerId string, moveIntervalMs int,
 	sourceNUMAs, destNUMAs machine.CPUSet,
 ) error {
 	sourceNUMAs = sourceNUMAs.Difference(destNUMAs)
@@ -180,6 +182,9 @@ func MovePagesForContainer(ctx context.Context, podUID, containerId string,
 	if err != nil {
 		return fmt.Errorf("GetPidsWithAbsolutePath: %s failed with error: %v", memoryAbsCGPath, err)
 	}
+
+	general.Infof("MovePagesForContainer start, cgroup: %s, moveInterval: %d ms, source numas: %+v, dest numas: %+v",
+		memoryAbsCGPath, moveIntervalMs, sourceNUMAs, destNUMAs)
 
 	startTime := time.Now()
 	logs := make([]eventbus.SyscallLog, 0)
@@ -200,7 +205,7 @@ containerLoop:
 		}
 
 		start := time.Now()
-		if err = MovePagesForProcess(ctx, ProcDir, pid, sourceNUMAs.ToSliceInt(), destNUMAs.ToSliceInt()); err != nil {
+		if err = MovePagesForProcess(ctx, ProcDir, pid, moveIntervalMs, sourceNUMAs.ToSliceInt(), destNUMAs.ToSliceInt()); err != nil {
 			errList = append(errList, fmt.Errorf("Move pages for pod: %s, container: %s, pid: %d failed: %v ",
 				podUID, containerId, pid, err))
 			continue
@@ -242,7 +247,7 @@ containerLoop:
 	return err
 }
 
-func MovePagesForProcess(ctx context.Context, procDir string, pid int, srcNumas []int, dstNumas []int) error {
+func MovePagesForProcess(ctx context.Context, procDir string, pid int, moveIntervalMs int, srcNumas []int, dstNumas []int) error {
 	pidSmapsInfo, err := getProcessPageStats(procDir, pid)
 	if err != nil {
 		return err
@@ -346,7 +351,7 @@ numaLoop:
 			phyPagesToNuma = phyPagesAddr[start:end]
 		}
 
-		if err := moveProcessPagesToOneNuma(ctx, int32(pid), phyPagesToNuma, numaID); err != nil {
+		if err := moveProcessPagesToOneNuma(ctx, int32(pid), moveIntervalMs, phyPagesToNuma, numaID); err != nil {
 			errList = append(errList, err)
 			continue
 		}
@@ -355,7 +360,7 @@ numaLoop:
 	return utilerrors.NewAggregate(errList)
 }
 
-func moveProcessPagesToOneNuma(ctx context.Context, pid int32, pagesAddr []uint64, dstNuma int) (err error) {
+func moveProcessPagesToOneNuma(ctx context.Context, pid int32, moveIntervalMs int, pagesAddr []uint64, dstNuma int) (err error) {
 	leftPhyPages := pagesAddr[:]
 
 	var movePagesLatencyMax int64
@@ -363,6 +368,7 @@ func moveProcessPagesToOneNuma(ctx context.Context, pid int32, pagesAddr []uint6
 	movePagesEachTime := MovePagesMinEachTime
 	moveCount := 0
 	var movingPagesAddr []uint64
+	t0 := time.Now()
 
 	var errList []error
 pagesLoop:
@@ -411,10 +417,12 @@ pagesLoop:
 		} else if movePagesEachTime > MovePagesMaxEachTime {
 			movePagesEachTime = MovePagesMaxEachTime
 		}
+		time.Sleep(time.Duration(moveIntervalMs) * time.Millisecond)
 	}
 
 	if movePagesLatencyMax > 0 {
-		general.Infof("moveProcessPagesToOneNuma pid: %d, dest numa: %d, moveCount: %d, timeCost max: %d ms, movePages len: %d\n", pid, dstNuma, moveCount, movePagesLatencyMax, movePagesLenWhenLatencyMax)
+		general.Infof("moveProcessPagesToOneNuma pid: %d, dest numa: %d, moveCount: %d, movePages max len: %d， timeCost total: %d ms, max: %d ms",
+			pid, dstNuma, moveCount, movePagesLenWhenLatencyMax, time.Since(t0).Milliseconds(), movePagesLatencyMax)
 	}
 	return utilerrors.NewAggregate(errList)
 }

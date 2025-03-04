@@ -977,6 +977,11 @@ func (p *DynamicPolicy) migratePagesForNUMASetChangedContainers(numaSetChangedCo
 				continue
 			}
 
+			moveIntervalMs := 50
+			if allocationInfo.PodNamespace == "bmq" {
+				moveIntervalMs = 500
+			}
+
 			if !allocationInfo.NumaAllocationResult.IsEmpty() {
 				movePagesWorkName := util.GetContainerAsyncWorkName(podUID, containerName,
 					memoryPluginAsyncWorkTopicMovePage)
@@ -987,7 +992,7 @@ func (p *DynamicPolicy) migratePagesForNUMASetChangedContainers(numaSetChangedCo
 						UID:  uuid.NewUUID(),
 						Fn:   MovePagesForContainer,
 						Params: []interface{}{
-							podUID, containerID,
+							podUID, containerID, moveIntervalMs,
 							p.topology.CPUDetails.NUMANodes(),
 							allocationInfo.NumaAllocationResult.Clone(),
 						},

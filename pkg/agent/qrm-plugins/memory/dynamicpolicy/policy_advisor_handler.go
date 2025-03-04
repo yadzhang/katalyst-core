@@ -802,7 +802,7 @@ func (p *DynamicPolicy) doNumaMemoryBalance(ctx context.Context, advice types.Nu
 
 			containerNumaSet := machine.NewCPUSet(containerInfo.DestNumaList...)
 			if containerNumaSet.Contains(destNuma) {
-				err = MigratePagesForContainer(ctx, containerInfo.PodUID, stats.ContainerID, p.topology.NumNUMANodes,
+				err = MigratePagesForContainer(ctx, containerInfo.PodUID, stats.ContainerID, 50, p.topology.NumNUMANodes,
 					machine.NewCPUSet(advice.SourceNuma), machine.NewCPUSet(destNuma))
 				if err != nil {
 					general.Errorf("MigratePagesForContainer failed for container[%v/%v] source_numa [%v],dest_numa [%v],err: %v",
