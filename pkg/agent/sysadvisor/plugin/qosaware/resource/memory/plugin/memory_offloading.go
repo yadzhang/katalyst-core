@@ -54,7 +54,8 @@ const (
 const (
 	InactiveProbe            = 0.1
 	OffloadingSizeScaleCoeff = 1.05
-	CacheMappedCoeff         = 2
+	CacheMappedCoeff         = 1.2
+	rssUsageThreshold        = 10 * 1024 * 1024 * 1024 // 10 GiB
 )
 
 const (
@@ -71,6 +72,7 @@ var tmoBlockFuncs sync.Map
 type TmoStats struct {
 	obj                  string
 	memUsage             float64
+	memRSS               float64
 	memInactive          float64
 	memPsiAvg60          float64
 	pgscan               float64
@@ -300,7 +302,12 @@ func (tmoEngine *tmoEngineInstance) getStats() (TmoStats, error) {
 		if err != nil {
 			return err
 		}
+		memRSS, err := metaserver.GetCgroupMetric(relativePath, consts.MetricMemRssCgroup)
+		if err != nil {
+			return err
+		}
 		tmoStats.memUsage = memUsage.Value
+		tmoStats.memRSS = memRSS.Value
 		tmoStats.memInactive = memInactiveFile.Value + memInactiveAnon.Value
 		tmoStats.memPsiAvg60 = psiAvg60.Value
 		tmoStats.pgsteal = pgsteal.Value
@@ -310,7 +317,7 @@ func (tmoEngine *tmoEngineInstance) getStats() (TmoStats, error) {
 		tmoStats.cache = memCache.Value
 		tmoStats.mapped = memMappedFile.Value
 		tmoStats.offloadingTargetSize = tmoEngine.offloadingTargetSize
-		general.Infof("Memory Usage of Cgroup %s, memUsage: %v, cache: %v, mapped: %v", tmoEngine.cgpath, memUsage.Value, memCache.Value, memMappedFile.Value)
+		general.Infof("Memory Usage of Cgroup %s, memUsage: %v, rss: %v, cache: %v, mapped: %v", tmoEngine.cgpath, memUsage.Value, memRSS.Value, memCache.Value, memMappedFile.Value)
 		return nil
 	}
 	getContainerMetrics := func(metaserver *metaserver.MetaServer, podUID string, containerName string) error {
@@ -437,9 +444,16 @@ func (tmoEngine *tmoEngineInstance) CalculateOffloadingTargetSize() {
 				return
 			}
 
-			cacheExceptMapped := currStats.cache - currStats.mapped
-			general.InfoS("Handle targetSize from policy", "Tmo obj:", currStats.obj, "targetSize:", targetSize, "cacheExceptMapped", cacheExceptMapped)
-			targetSize = math.Max(0, math.Min(cacheExceptMapped, targetSize))
+			if currStats.memRSS <= rssUsageThreshold {
+				cacheExceptMapped := currStats.cache - currStats.mapped
+				general.InfoS("Handle targetSize from policy", "Tmo obj:", currStats.obj, "targetSize:", targetSize, "cacheExceptMapped", cacheExceptMapped)
+
+				targetSize = math.Max(0, math.Min(cacheExceptMapped, targetSize))
+			} else {
+				general.InfoS("Handle targetSize from policy", "Tmo obj:", currStats.obj, "targetSize:", targetSize, "mapped", currStats.mapped)
+				targetSize = math.Max(0, targetSize-currStats.mapped)
+			}
+
 			tmoEngine.offloadingTargetSize = targetSize
 			currStats.offloadingTargetSize = targetSize
 			tmoEngine.lastStats = currStats
